@@ -1,7 +1,23 @@
-import React, { createContext, useContext, useReducer, useCallback } from 'react'
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
+
+// ─── Persistence helpers ───────────────────────────────────────────────────────
+const SAVE_KEY = 'learngo_save'
+const SAVED_FIELDS = [
+  'xp','level','xpToNext','streak','lives','gems','keys',
+  'dailyGoalProgress','completedLevels','questsDone','achievements',
+  'socraticMode','activeLang',
+]
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch { return {} }
+}
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
-const INITIAL = {
+const INITIAL_DEFAULTS = {
   // User
   name: 'Mirelle',
   level: 5,
@@ -12,7 +28,7 @@ const INITIAL = {
   maxLives: 5,
   gems: 1200,
   keys: 3,
-  dailyGoalProgress: 40, // starts at 40%, goes up as quests done
+  dailyGoalProgress: 40,
   socraticMode: 'strict', // 'strict' | 'guided'
 
   // Progress per language: { python: [true,true,false,...], javascript: [...], ... }
@@ -41,6 +57,15 @@ const INITIAL = {
 
   // Toast queue
   toastMsg: null,
+}
+
+function buildInitial() {
+  const saved = loadSaved()
+  const merged = { ...INITIAL_DEFAULTS }
+  for (const k of SAVED_FIELDS) {
+    if (saved[k] !== undefined) merged[k] = saved[k]
+  }
+  return merged
 }
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -78,8 +103,6 @@ function reducer(state, action) {
       const prev = state.completedLevels[lang] || []
       const updated = [...prev]
       updated[levelIndex] = true
-      const doneCount = updated.filter(Boolean).length
-      const progressPct = Math.round((doneCount / 10) * 100)
       return {
         ...state,
         completedLevels: { ...state.completedLevels, [lang]: updated },
@@ -107,6 +130,9 @@ function reducer(state, action) {
       }
     }
 
+    case 'RESET':
+      return { ...INITIAL_DEFAULTS, toastMsg: null }
+
     case 'CLEAR_TOAST':
       return { ...state, toastMsg: null }
 
@@ -122,7 +148,19 @@ function reducer(state, action) {
 const GameContext = createContext(null)
 
 export function GameProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, INITIAL)
+  const [state, dispatch] = useReducer(reducer, null, buildInitial)
+  const saveTimer = useRef(null)
+
+  // Debounced save to localStorage (600ms)
+  useEffect(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      const toSave = {}
+      for (const k of SAVED_FIELDS) toSave[k] = state[k]
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(toSave)) } catch {}
+    }, 600)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+  }, [state])
 
   const earnXP        = useCallback((amount) => dispatch({ type: 'EARN_XP', amount }), [])
   const loseLife      = useCallback(() => dispatch({ type: 'LOSE_LIFE' }), [])
@@ -133,6 +171,7 @@ export function GameProvider({ children }) {
   const clearToast        = useCallback(() => dispatch({ type: 'CLEAR_TOAST' }), [])
   const setToast          = useCallback((msg) => dispatch({ type: 'SET_TOAST', msg }), [])
   const setSocraticMode   = useCallback((mode) => dispatch({ type: 'SET_SOCRATIC_MODE', mode }), [])
+  const resetProgress     = useCallback(() => dispatch({ type: 'RESET' }), [])
 
   // Derived helpers
   const getLangProgress = (lang) => {
@@ -147,7 +186,7 @@ export function GameProvider({ children }) {
       ...state,
       earnXP, loseLife, restoreLives, completeLevel,
       setActiveLang, completeQuest, clearToast, setToast,
-      setSocraticMode, getLangProgress, isLevelDone,
+      setSocraticMode, getLangProgress, isLevelDone, resetProgress,
     }}>
       {children}
     </GameContext.Provider>

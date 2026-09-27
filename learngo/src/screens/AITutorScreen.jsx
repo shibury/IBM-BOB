@@ -6,6 +6,10 @@ import {
 } from 'lucide-react'
 import { user, mockAIResponses } from '../data/mockData'
 import { useGame } from '../context/GameContext'
+import { sendSocraticMessage } from '../services/aiService'
+
+// ─── OpenAI API key from env (undefined when not set) ─────────────────────────
+const OPENAI_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
 // ─── Code Block with Copy + Highlight ──────────────────────────────────────
 function CodeBlock({ code, language = 'python' }) {
@@ -252,7 +256,7 @@ const EXAMPLE_PROMPTS = [
 ]
 
 export default function AITutorScreen() {
-  const { socraticMode, setSocraticMode } = useGame()
+  const { socraticMode, setSocraticMode, setToast } = useGame()
   // Sync local display mode with GameContext socraticMode
   const mode = socraticMode === 'strict' ? 'Socratic' : 'Guided'
   const setMode = (m) => setSocraticMode(m === 'Socratic' ? 'strict' : 'guided')
@@ -270,20 +274,42 @@ export default function AITutorScreen() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
-  const sendMessage = (text) => {
+  const sendMessage = async (text) => {
     const trimmed = (text || input).trim()
     if (!trimmed) return
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: trimmed, time }])
+    const userMsg = { id: Date.now(), role: 'user', content: trimmed, time }
+    setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
 
-    setTimeout(() => {
+    if (OPENAI_KEY) {
+      // ── Real OpenAI API ────────────────────────────────────────────────────
+      try {
+        // Build chat history: existing messages + the new user message
+        const history = [...messages, userMsg].map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        }))
+        const reply = await sendSocraticMessage(history, socraticMode, OPENAI_KEY)
+        setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: reply, time }])
+      } catch (err) {
+        console.error('OpenAI error:', err)
+        setToast(`⚠️ AI unavailable: ${err.message.slice(0, 60)} — using offline mode`)
+        // Fallback to mock
+        const reply = mockAIResponses[aiIdx.current % mockAIResponses.length]
+        aiIdx.current++
+        setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: reply, time }])
+      }
+    } else {
+      // ── Mock fallback (no API key) ─────────────────────────────────────────
+      await new Promise(r => setTimeout(r, 1400 + Math.random() * 800))
       const reply = mockAIResponses[aiIdx.current % mockAIResponses.length]
       aiIdx.current++
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: reply, time }])
-      setLoading(false)
-    }, 1400 + Math.random() * 800)
+    }
+
+    setLoading(false)
   }
 
   const handlePDFUpload = (filename) => {

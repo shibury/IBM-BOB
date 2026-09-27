@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import {
   Settings, HelpCircle, Moon, Sun, ChevronRight,
   Brain, Bell, Shield, User, LogOut, Info,
-  Sliders, MessageSquare, BookOpen, ChevronDown, Users,
+  Sliders, MessageSquare, BookOpen, ChevronDown, Users, RotateCcw,
 } from 'lucide-react'
 import { user } from '../data/mockData'
 import { FoxMascot } from '../components/Header'
@@ -101,7 +101,7 @@ function SettingsRow({ icon: Icon, iconColor = 'text-slate-DEFAULT', label, desc
 
 // ─── Other/Settings Screen ────────────────────────────────────────────────────
 export default function OtherScreen({ onLogout, onAuth, onNavigate }) {
-  const { xp, level, streak, setToast, socraticMode, setSocraticMode } = useGame()
+  const { xp, level, streak, setToast, socraticMode, setSocraticMode, resetProgress } = useGame()
   const socraticStrict = socraticMode === 'strict'
   const [darkMode, setDarkMode]             = useState(true)
   const [notifications, setNotifications]   = useState(true)
@@ -242,6 +242,19 @@ export default function OtherScreen({ onLogout, onAuth, onNavigate }) {
           <SettingsSection title="Account">
             <SettingsRow icon={User}    iconColor="text-slate-DEFAULT"  label="Edit Profile"    onClick={() => {}} />
             <SettingsRow icon={Shield}  iconColor="text-emerald-DEFAULT" label="Privacy Settings" description="Manage skill sharing & data" onClick={() => {}} />
+            <SettingsRow
+              icon={RotateCcw}
+              iconColor="text-red-400"
+              label="Reset Progress"
+              description="Erase all XP, levels and quest history"
+              onClick={() => {
+                if (window.confirm('Reset all progress? This cannot be undone.')) {
+                  localStorage.removeItem('learngo_save')
+                  resetProgress()
+                  setToast('🔄 Progress reset. Starting fresh!')
+                }
+              }}
+            />
             <SettingsRow
               icon={LogOut}
               iconColor="text-red-400"

@@ -5,15 +5,26 @@ import {
 } from 'lucide-react'
 import { gameLevels, languages } from '../data/mockData'
 import { useGame } from '../context/GameContext'
+import { lessonsByLang } from '../data/curriculum'
 
-// ─── Inline quiz questions (compatible with new data) ────────────────────────
-const quizQuestions = {
-  algorithms: [
-    { id: 1, question: 'What is the time complexity of Merge Sort in the worst case?', options: ['O(n²)', 'O(n log n)', 'O(log n)', 'O(n)'], correct: 1, explanation: "Merge Sort divides the array into halves (log n levels) and merges each level in O(n) time — O(n log n) total." },
-    { id: 2, question: 'Which data structure is used in BFS?', options: ['Stack', 'Heap', 'Queue', 'Tree'], correct: 2, explanation: "BFS uses a Queue (FIFO) — visit a node, enqueue its neighbors, dequeue the next to process." },
-    { id: 3, question: 'What does Big-O notation describe?', options: ['Exact runtime', 'Best-case only', 'Upper bound on growth', 'Memory only'], correct: 2, explanation: "Big-O describes the upper bound — how runtime grows as input size increases." },
-  ],
+// ─── Build quiz questions from curriculum lessons ────────────────────────────
+function buildQuiz(lang) {
+  const lessons = lessonsByLang[lang] || lessonsByLang.python
+  return lessons.slice(0, 5).map((l, i) => ({
+    id: i + 1,
+    question: l.instruction,
+    options: l.options,
+    correct: l.correctOption,
+    explanation: l.explanation.replace(/`([^`]+)`/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1'),
+  }))
 }
+
+// Fallback static questions for general DSA quiz
+const fallbackQuiz = [
+  { id:1, question:'Time complexity of Merge Sort?', options:['O(n²)','O(n log n)','O(log n)','O(n)'], correct:1, explanation:'Merge Sort: log n levels × O(n) merge = O(n log n).' },
+  { id:2, question:'Which structure does BFS use?', options:['Stack','Heap','Queue','Tree'], correct:2, explanation:'BFS uses a Queue (FIFO) for level-order traversal.' },
+  { id:3, question:'What does Big-O describe?', options:['Exact time','Best case','Upper bound','Memory'], correct:2, explanation:'Big-O is the upper bound on growth rate.' },
+]
 
 // ─── Inline learnPaths from gameLevels ───────────────────────────────────────
 const learnPaths = languages.map(lang => {
@@ -30,7 +41,8 @@ const learnPaths = languages.map(lang => {
 // ─── Quiz Modal ──────────────────────────────────────────────────────────────
 function QuizModal({ onClose, subject }) {
   const { earnXP } = useGame()
-  const questions = quizQuestions[subject] || quizQuestions.algorithms
+  // Build questions from curriculum if subject is a lang id, else fallback
+  const questions = lessonsByLang[subject] ? buildQuiz(subject) : fallbackQuiz
   const [current, setCurrent]     = useState(0)
   const [selected, setSelected]   = useState(null)
   const [answered, setAnswered]   = useState(false)
@@ -261,14 +273,14 @@ function PathCard({ path, onSelect, selected }) {
 }
 
 // ─── Main Learn Screen ───────────────────────────────────────────────────────
-export default function LearnScreen() {
+export default function LearnScreen({ onNavigate, onStartLesson }) {
   const [selectedPath, setSelectedPath] = useState('python')
   const [quizOpen, setQuizOpen]         = useState(false)
-  const [quizSubject, setQuizSubject]   = useState('algorithms')
+  const [quizSubject, setQuizSubject]   = useState('python')
 
   const activePath = learnPaths.find(p => p.id === selectedPath)
 
-  const openQuiz = (subject = 'algorithms') => {
+  const openQuiz = (subject = 'python') => {
     setQuizSubject(subject)
     setQuizOpen(true)
   }
@@ -324,7 +336,14 @@ export default function LearnScreen() {
                 key={node.id}
                 node={node}
                 index={i}
-                onQuiz={() => openQuiz(selectedPath)}
+                onQuiz={() => {
+                  // If node is active, start real lesson; otherwise open quiz
+                  if (node.active && onStartLesson) {
+                    onStartLesson({ lang: selectedPath, levelIndex: i, title: node.title })
+                  } else {
+                    openQuiz(selectedPath)
+                  }
+                }}
               />
             ))}
           </div>

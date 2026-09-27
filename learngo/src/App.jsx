@@ -3,14 +3,15 @@ import { GameProvider, useGame } from './context/GameContext'
 import Header from './components/Header'
 import { Sidebar, BottomNav } from './components/Navigation'
 import { AuthModal, LogoutModal } from './components/AuthModals'
-import HomeScreen      from './screens/HomeScreen'
-import AITutorScreen   from './screens/AITutorScreen'
-import LearnScreen     from './screens/LearnScreen'
-import QuestsScreen    from './screens/QuestsScreen'
-import GameScreen      from './screens/GameScreen'
-import LessonScreen    from './screens/LessonScreen'
-import CommunityScreen from './screens/CommunityScreen'
-import OtherScreen     from './screens/OtherScreen'
+import HomeScreen        from './screens/HomeScreen'
+import AITutorScreen     from './screens/AITutorScreen'
+import LearnScreen       from './screens/LearnScreen'
+import QuestsScreen      from './screens/QuestsScreen'
+import GameScreen        from './screens/GameScreen'
+import LessonScreen      from './screens/LessonScreen'
+import CommunityScreen   from './screens/CommunityScreen'
+import OtherScreen       from './screens/OtherScreen'
+import OnboardingScreen  from './screens/OnboardingScreen'
 
 // ─── SPA Router: screen-id → component ───────────────────────────────────────
 const ROUTES = {
@@ -128,6 +129,45 @@ function GameToastBridge({ showToast }) {
   return null
 }
 
+// ─── PWA Install Banner ───────────────────────────────────────────────────────
+function PWAInstallBanner({ prompt, onInstall, onDismiss }) {
+  return (
+    <div
+      className="fixed bottom-20 lg:bottom-0 left-0 right-0 z-40 flex justify-center pointer-events-none"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div
+        className="pointer-events-auto mx-4 mb-2 w-full max-w-sm glass-card border border-white/10 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-card animate-slide-up"
+        style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: '#FF7A00' }}
+        >
+          <span className="text-lg">🦊</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white leading-tight">Install LearnGo App</p>
+          <p className="text-xs text-[#94A3B8]">Add to home screen for quick access</p>
+        </div>
+        <button
+          onClick={onInstall}
+          className="btn-primary text-xs px-3 py-1.5 flex-shrink-0"
+        >
+          Install
+        </button>
+        <button
+          onClick={onDismiss}
+          className="text-[#94A3B8] hover:text-white transition-colors flex-shrink-0"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen]           = useState('home')
@@ -138,6 +178,38 @@ export default function App() {
   const [questModal, setQuestModal]   = useState(null)
   // activeLesson shape: { lang, levelIndex, title } — set by GameScreen
   const [activeLesson, setActiveLesson] = useState(null)
+  // Onboarding: show when logged in and not yet onboarded
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => isLoggedIn && !localStorage.getItem('learngo_onboarded')
+  )
+  // PWA install prompt
+  const [pwaPrompt, setPwaPrompt]   = useState(null)
+  const [showPwaBanner, setShowPwaBanner] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem('learngo_pwa_no')) return
+    const handler = (e) => {
+      e.preventDefault()
+      setPwaPrompt(e)
+      setShowPwaBanner(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handlePwaInstall = async () => {
+    if (!pwaPrompt) return
+    pwaPrompt.prompt()
+    const { outcome } = await pwaPrompt.userChoice
+    setPwaPrompt(null)
+    setShowPwaBanner(false)
+    if (outcome === 'accepted') showToast('🎉 LearnGo installed successfully!')
+  }
+
+  const handlePwaDismiss = () => {
+    setShowPwaBanner(false)
+    localStorage.setItem('learngo_pwa_no', '1')
+  }
 
   // ── navigate: accepts any route key ──────────────────────────────────────
   const navigate = useCallback((id) => {
@@ -176,10 +248,10 @@ export default function App() {
     home:      { onNavigate: navigate, onStartQuest: setQuestModal },
     other:     { onLogout: () => setShowLogout(true), onAuth: () => setShowAuth(true), onNavigate: navigate },
     game:      { onStartLesson: ({ lang, levelIndex, title }) => setActiveLesson({ lang, levelIndex, title }) },
-    community: {},
-    tutor:     {},
-    learn:     {},
-    quests:    {},
+    community: { onNavigate: navigate },
+    tutor:     { onNavigate: navigate },
+    learn:     { onNavigate: navigate, onStartLesson: ({ lang, levelIndex, title }) => setActiveLesson({ lang, levelIndex, title }) },
+    quests:    { onNavigate: navigate },
   }
 
   return (
@@ -264,6 +336,20 @@ export default function App() {
       {/* ── Login Gate (full-screen overlay when logged out) ── */}
       {!isLoggedIn && (
         <LoginGate onOpen={() => setShowAuth(true)} />
+      )}
+
+      {/* ── Onboarding Wizard ── */}
+      {showOnboarding && isLoggedIn && (
+        <OnboardingScreen onDone={() => setShowOnboarding(false)} />
+      )}
+
+      {/* ── PWA Install Banner ── */}
+      {showPwaBanner && (
+        <PWAInstallBanner
+          prompt={pwaPrompt}
+          onInstall={handlePwaInstall}
+          onDismiss={handlePwaDismiss}
+        />
       )}
     </div>
     </GameProvider>
